@@ -9,11 +9,11 @@ import tkinter as tk
 from icalendar import Calendar, Event
 from tkinter import filedialog
 from tkinter import messagebox as mbox
+import tkinter.simpledialog as sd
 import pandas as pd
 import numpy as np
 
 #to adjust this for any individual put in their last name as it is on schedule
-Emp_Name = "CAVANNA"
 text = str()
 
 #makes code to split string by space delimiter
@@ -28,29 +28,131 @@ def convert_time(date_time):
     return datetime_str
 
 def load_xlsx(file_path):
+    #Load data from an Excel file and return it as a DataFrame
     workbook = openpyxl.load_workbook(file_path)
     sheet = workbook.active
     data = [list(row) for row in sheet.iter_rows(values_only=True)]
     return pd.DataFrame(data)
 
+#creates .ics files
+def create_ics(df):
+    cal = Calendar()
+
+    for index, row in df.iterrows():
+        event = Event()
+        event.add('summary', 'REI Work: ' + row['Task'])
+        event.add('dtstart', row['Start'].to_pydatetime())
+        event.add('dtend', row['End'].to_pydatetime())
+        event.add('description', 'test test')
+        cal.add_component(event)
+
+    return cal
+
+def check_cols(df):
+    sch_cols = []
+
+    # Iterate over columns and check if the first value is in datetime format
+    for col in df.columns:
+        top_val = df[col].iloc[0]
+
+        if isinstance(top_val, datetime):
+            shift_start, shift_end, task = find_shift_times(df[col][1:])
+
+            # Combine date part of 'Date' and time part of 'Shift Start' and 'Shift End'
+            combined_start = pd.to_datetime(top_val.strftime('%Y-%m-%d') + ' ' + shift_start.strftime('%H:%M:%S'))
+            combined_end = pd.to_datetime(top_val.strftime('%Y-%m-%d') + ' ' + shift_end.strftime('%H:%M:%S'))
+
+            # Check if task is None or an empty string
+            if task is None or task == '':
+                # Use the first non-null value from the 'main_task' column
+                task_com = str(df.iloc[:, 1].dropna().iloc[0])
+            else:
+                task_com = task
+
+            # Assuming 'Shift Start', 'Shift End', 'Task' are column names in your DataFrame
+            sch_cols.append([combined_start, combined_end, task_com])
+
+    sch_df = pd.DataFrame(sch_cols, columns=['Start', 'End', 'Task'])
+    return sch_df
+
+def find_shift_times(column):
+    # Extract shift time strings from the column
+    shift_time_strs = [value for value in column if isinstance(value, str)]
+
+    if not shift_time_strs:
+        return None, None
+
+    # Parse each shift time string and collect start and end times
+    shift_times = [parse_shift_time(shift_time_str) for shift_time_str in shift_time_strs]
+
+    # Filter out None values for start and end times
+    tasks = [(start,end,task) for start,end,task in shift_times if task is not None]
+    shift_times = [(start, end, task) for start, end, task in shift_times if start is not None and end is not None]
+        
+    if not shift_times:
+        return None, None, None
+
+    # Extract the earliest start time and latest end time
+    earliest_start_time = min(shift_times, key=lambda x: x[0])[0]
+    latest_end_time = max(shift_times, key=lambda x: x[1])[1]
+
+    r_tasks = ', '.join(set(task for (_, _, task) in tasks))
+
+    return earliest_start_time, latest_end_time, r_tasks
+
+
+def parse_shift_time(shift_time_str):
+    start_time = None
+    end_time = None
+    task = None
+
+    # Split the shift time string into start and end time strings
+    if ' - ' in shift_time_str:
+        start_time_str, end_time_str = shift_time_str.split(' - ')
+
+        try:
+            # Parse the start and end times as datetime objects
+            start_time = datetime.strptime(start_time_str, '%I:%M %p')
+            end_time = datetime.strptime(end_time_str, '%I:%M %p')
+        except ValueError:
+            pass
+    elif shift_time_str is not None:
+        task = shift_time_str
+
+    return start_time, end_time, task
 
 #initiates vars
 cal = Calendar()
 numOfDays = 0
 
 def open_file():
-    file_path = filedialog.askopenfilename(title="Select CSV File", filetypes=[("Excel files", "*.xlsx")])
+    #Open a file dialog to select an Excel file and process it
 
-    if file_path:
-        if file_path.endswith('.xlsx'):
-            Sch_data = load_xlsx(file_path)
-        else:
-            print("Unsupported file format.")
-            return
+    Emp_Name = sd.askstring("Enter Employee Name", "Enter the Employee's Last Name:")
 
-    # Initialize the row index
+    if Emp_Name is None:
+        return  # User clicked Cancel
+    
+
+    try:
+        file_path = filedialog.askopenfilename(title="Select Excel File", filetypes=[("Excel files", "*.xlsx")])
+
+        if file_path:
+            if file_path.endswith('.xlsx'):
+                Sch_data = load_xlsx(file_path)
+                Sch_data = process_schedule(Sch_data, Emp_Name)
+                datetime_cols = check_cols(Sch_data)
+                ical_calendar = create_ics(datetime_cols)
+                save_ics_file(ical_calendar)
+            else:
+                mbox.showerror("Unsupported Format", "Please select a valid Excel file.")
+    except Exception as e:
+        mbox.showerror("Error",f"You did not upload the right file or some other error occured :(")
+
+ 
+def process_schedule(Sch_data, Emp_Name):
     row = 0
-
+    
     # Loop to drop rows until a non-None value is encountered in the first column
     while row < len(Sch_data) and Sch_data.iloc[row, 0] is None:
         Sch_data = Sch_data.drop(Sch_data.index[row]).reset_index(drop=True)
@@ -80,12 +182,13 @@ def open_file():
     Sch_data = Sch_data.drop(columns=columns_to_drop)
     Sch_data = Sch_data.reset_index(drop=True)
 
-    # Print the entire DataFrame
-    print(Sch_data)
+    return Sch_data
 
-##    # Write the DataFrame to a CSV file
-##    csv_file_path = "C:/Users/Ecava/OneDrive/Desktop/ProgrammingStuff/rei_schedule/output.csv"
-##    Sch_data.to_csv(csv_file_path, index=False)
+def save_ics_file(cal):
+    with open('appointments.ics', 'wb') as f:
+        f.write(cal.to_ical())
+    mbox.showinfo("Success", "Appointments saved to 'appointments.ics'")
+
 
 # Create the main tkinter window
 root = tk.Tk()
