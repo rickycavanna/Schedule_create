@@ -130,13 +130,11 @@ def process_schedule(Sch_data, Emp_Name):
 
     Sch_data = Sch_data[employee_rows | comma_rows]
     Sch_data = Sch_data.reset_index(drop=True)
-    schdule = pd.DataFrame(columns=Sch_data.columns)
 
-    ## below is the code that is causing problems when there is the wrong name
-    
     #removes all the rows except the employee in question and dates
     emp_ind = Sch_data[Sch_data[0].str.lower().str.contains(Emp_Name.lower())].index
     tempp = min(emp_ind) - 1
+    print(tempp)
     emp_ind = emp_ind.append(pd.Index([tempp]))
 
     Sch_data = Sch_data[Sch_data.index.isin(emp_ind)]
@@ -167,7 +165,7 @@ def open_file():
 
         if file_path:
             if file_path.endswith('.xlsx'):
-                Sch_data = load_xlsx(file_path)
+                Sch_data = load_xlsx(file_path)   
                 Sch_data = process_schedule(Sch_data, Emp_Name)
                 datetime_cols = check_cols(Sch_data)
                 ical_calendar = create_ics(datetime_cols)
@@ -178,7 +176,7 @@ def open_file():
         else:
             mbox.showinfo("Info", "No file selected. Exiting.")        
     except Exception as e:
-        mbox.showerror("Error",f"An unexpected error occurred: {e}")#f"You did not upload the right file or some other error occured :(")
+        mbox.showerror("Error",f"You did not upload the right file or misspelled the name :(")
 
 # Create and configure the Open File button
 open_file()
