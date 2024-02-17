@@ -1,20 +1,11 @@
-##import PyPDF2
-##import pdfminer
+#this takes the REI schedule and creates ICS files from it based on last name
 import openpyxl
-import datetime
 from datetime import datetime
 import tkinter as tk
-##import csv
-##from PyPDF2 import PdfReader
 from icalendar import Calendar, Event
-from tkinter import filedialog
-from tkinter import messagebox as mbox
-import tkinter.simpledialog as sd
+from tkinter import filedialog, messagebox as mbox, simpledialog as sd
 import pandas as pd
-import numpy as np
 
-#to adjust this for any individual put in their last name as it is on schedule
-text = str()
 
 #makes code to split string by space delimiter
 def split_string(string):
@@ -121,38 +112,9 @@ def parse_shift_time(shift_time_str):
 
     return start_time, end_time, task
 
-#initiates vars
-cal = Calendar()
-numOfDays = 0
-
-def open_file():
-    #Open a file dialog to select an Excel file and process it
-
-    Emp_Name = sd.askstring("Enter Employee Name", "Enter the Employee's Last Name:")
-
-    if Emp_Name is None:
-        return  # User clicked Cancel
-    
-
-    try:
-        file_path = filedialog.askopenfilename(title="Select Excel File", filetypes=[("Excel files", "*.xlsx")])
-
-        if file_path:
-            if file_path.endswith('.xlsx'):
-                Sch_data = load_xlsx(file_path)
-                Sch_data = process_schedule(Sch_data, Emp_Name)
-                datetime_cols = check_cols(Sch_data)
-                ical_calendar = create_ics(datetime_cols)
-                save_ics_file(ical_calendar)
-            else:
-                mbox.showerror("Unsupported Format", "Please select a valid Excel file.")
-    except Exception as e:
-        mbox.showerror("Error",f"You did not upload the right file or some other error occured :(")
-
- 
 def process_schedule(Sch_data, Emp_Name):
     row = 0
-    
+        
     # Loop to drop rows until a non-None value is encountered in the first column
     while row < len(Sch_data) and Sch_data.iloc[row, 0] is None:
         Sch_data = Sch_data.drop(Sch_data.index[row]).reset_index(drop=True)
@@ -170,6 +132,8 @@ def process_schedule(Sch_data, Emp_Name):
     Sch_data = Sch_data.reset_index(drop=True)
     schdule = pd.DataFrame(columns=Sch_data.columns)
 
+    ## below is the code that is causing problems when there is the wrong name
+    
     #removes all the rows except the employee in question and dates
     emp_ind = Sch_data[Sch_data[0].str.lower().str.contains(Emp_Name.lower())].index
     tempp = min(emp_ind) - 1
@@ -189,17 +153,35 @@ def save_ics_file(cal):
         f.write(cal.to_ical())
     mbox.showinfo("Success", "Appointments saved to 'appointments.ics'")
 
+def open_file():
+    #Open a file dialog to select an Excel file and process it
 
-# Create the main tkinter window
-root = tk.Tk()
-root.title("File Reader")
+    Emp_Name = sd.askstring("Enter Employee Name", "Enter the Employee's Last Name:")
+
+    if not Emp_Name:
+        mbox.showerror("Error", "Last name cannot be empty.")
+        return  # user clicked Cancel
+    
+    try:
+        file_path = filedialog.askopenfilename(title="Select Excel File", filetypes=[("Excel files", "*.xlsx")])
+
+        if file_path:
+            if file_path.endswith('.xlsx'):
+                Sch_data = load_xlsx(file_path)
+                Sch_data = process_schedule(Sch_data, Emp_Name)
+                datetime_cols = check_cols(Sch_data)
+                ical_calendar = create_ics(datetime_cols)
+                save_ics_file(ical_calendar)
+
+            else:
+                raise TypeError("Unsupported Format", "Please select a valid Excel file, dickhead.")
+        else:
+            mbox.showinfo("Info", "No file selected. Exiting.")        
+    except Exception as e:
+        mbox.showerror("Error",f"An unexpected error occurred: {e}")#f"You did not upload the right file or some other error occured :(")
 
 # Create and configure the Open File button
-open_button = tk.Button(root, text="Open Schedule File", command=open_file)
-open_button.pack(pady=20)
-
-# Run the tkinter main loop
-root.mainloop()
+open_file()
 
 
 
